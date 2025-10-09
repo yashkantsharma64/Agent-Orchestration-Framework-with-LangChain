@@ -141,9 +141,47 @@ class MedicalAgentOrchestrator:
             with open(log_filename, "w") as f: f.write(self.main_conversation_history)
             if self.collection is not None:
                 self.collection.upsert(documents=[self.main_conversation_history], ids=[str(self.run_id)])
+            self.last_log_filename = log_filename  # Store the filename
             return f"✅ Diagnosis log saved to: {log_filename}"
         except Exception as e:
             return f"❌ Error saving log file: {e}"
+    
+    def get_last_log_content(self):
+        """Get the content of the last saved log file."""
+        if hasattr(self, 'last_log_filename'):
+            try:
+                with open(self.last_log_filename, 'r') as f:
+                    return f.read()
+            except Exception as e:
+                return f"Error reading log file: {e}"
+        return "No log file available yet."
+
+    def get_agent_memories(self):
+        """Retrieve the conversation memory from all agents."""
+        memories = {}
+        for agent_name, agent_chain in self.agents.items():
+            try:
+                # Get the memory buffer content
+                memory_vars = agent_chain.memory.load_memory_variables({})
+                memories[agent_name] = memory_vars.get('history', 'No conversation history')
+            except Exception as e:
+                memories[agent_name] = f"Error retrieving memory: {e}"
+        return memories
+
+    def export_all_memories(self):
+        """Export all agent memories to a formatted string."""
+        memories = self.get_agent_memories()
+        output = "=" * 80 + "\n"
+        output += "AGENT MEMORY LOGS\n"
+        output += "=" * 80 + "\n\n"
+        
+        for agent_name, memory_content in memories.items():
+            output += f"\n{'='*80}\n"
+            output += f"AGENT: {agent_name}\n"
+            output += f"{'='*80}\n"
+            output += f"{memory_content}\n"
+        
+        return output
 
     def _get_similar_cases(self, query):
         if self.collection is None: return []
@@ -243,6 +281,39 @@ with st.sidebar:
     st.markdown("---")
     st.header("⚠ Disclaimer")
     st.warning("This software is for educational purposes only and is not a substitute for professional medical advice.")
+    
+    # Agent Memory Inspector in Sidebar
+    st.markdown("---")
+    st.header("🧠 Agent Memory Inspector")
+    st.markdown("View the conversational buffer memory of individual agents.")
+    
+    if "orchestrator" in st.session_state and st.session_state.orchestrator and st.session_state.get("analysis_complete", False):
+        selected_agent = st.selectbox(
+            "Select Agent to Inspect",
+            list(st.session_state.orchestrator.agents.keys())
+        )
+        
+        if st.button("🔍 View Memory", key="view_memory_btn"):
+            with st.spinner("Retrieving memory..."):
+                memories = st.session_state.orchestrator.get_agent_memories()
+                st.text_area(
+                    f"{selected_agent} Memory Buffer",
+                    memories.get(selected_agent, "No memory found"),
+                    height=300,
+                    key=f"memory_display_{selected_agent}"
+                )
+        
+        st.markdown("---")
+        all_memories = st.session_state.orchestrator.export_all_memories()
+        st.download_button(
+            label="⬇️ Download All Memories",
+            data=all_memories,
+            file_name=f"agent_memories_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain",
+            key="download_all_memories"
+        )
+    else:
+        st.info("Complete an analysis to inspect agent memories.")
 
 if "orchestrator" not in st.session_state: st.session_state.orchestrator = None
 if "messages" not in st.session_state: st.session_state.messages = []
@@ -286,5 +357,24 @@ if st.session_state.orchestrator:
                     response = st.session_state.orchestrator.process_follow_up(prompt)
                     st.markdown(response)
                     st.session_state.messages.append({"role": "assistant", "content": response})
+        
+        # Add section to view and download the diagnosis log
+        st.header("3. View & Download Diagnosis Log")
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            if st.button("📄 View Full Diagnosis Log"):
+                log_content = st.session_state.orchestrator.get_last_log_content()
+                st.text_area("Complete Diagnosis Log", log_content, height=400, key="full_log_display")
+        
+        with col2:
+            log_content = st.session_state.orchestrator.get_last_log_content()
+            st.download_button(
+                label="⬇️ Download Diagnosis Log",
+                data=log_content,
+                file_name=f"diagnosis_log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                mime="text/plain",
+                key="download_diagnosis_log"
+            )
 else:
     st.warning("Please resolve API key/model issues to proceed.")
