@@ -94,7 +94,7 @@ st.markdown("""
 
 # Configure your URLs
 PROJECT1_URL = "https://medtriage.streamlit.app/"
-PROJECT2_URL = "https://shopping-assistant-final.streamlit.app"
+PROJECT2_URL = "https://abhinav-shopping-assistant.streamlit.app"
 
 # Header
 st.markdown('<div class="main-header">🤖 AI Agent Services Hub</div>', unsafe_allow_html=True)
